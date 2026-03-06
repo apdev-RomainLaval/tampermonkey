@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Gitea
 // @namespace    http://tampermonkey.net/
-// @version      2026-03-06
+// @version      2026-03-07
 // @description  try to take over the world!
 // @author       You
 // @match        https://git.applidev.fr/
