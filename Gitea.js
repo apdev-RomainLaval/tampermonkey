@@ -12,5 +12,7 @@
 (function() {
     'use strict';
 
+    console.log("Gitea script loaded!");
+
     // Your code here...
 })();
