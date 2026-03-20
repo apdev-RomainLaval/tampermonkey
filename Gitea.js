@@ -16,7 +16,7 @@
 
     // #region Constants
     const GITEA_BASE_URL = 'https://git.applidev.fr';
-    const GITEA_TOKEN = '';
+    const GITEA_TOKEN = '7b2c99bd0d9ca3a4fe529d4f3a1b1303246e6d38';
     const GITEA_API_URL = `${GITEA_BASE_URL}/api/v1/`;
     
     const PullRequestStatus = {
@@ -47,6 +47,8 @@
     GM_addStyle(STYLE);
     // #endregion
 
+    const currentUser = await apiRequest('user', 'GET');
+
     // #region Pull Request Table
     let pullRequestsData;
     if (globalThis.location.pathname.includes('/pulls')) {
@@ -64,8 +66,25 @@
             'GET'
         );
 
-        applyPullRequestStatusStyle($row, getPullRequestStatus(fullData));
-        generatePullRequestStatesSummary($row, fullData);
+        const reviews = treatPullRequestReviews(fullData);
+
+        if (reviews.some(review => review.user?.id == currentUser.id && review.state === 'REQUEST_REVIEW')) {
+            $row.css('border', '2px solid #004085');
+        } else if (
+            data.user.id === currentUser.id
+            || reviews.some(review => review.user?.id === currentUser.id)
+        ) {
+            $row.css('opacity', '0.4');
+        }
+
+        applyPullRequestStatusStyle($row, getPullRequestStatus(reviews));
+        generatePullRequestStatesSummary($row, reviews);
+    }
+
+    function treatPullRequestReviews(reviews) {
+        // get unique reviews by user (keep the most recent one)
+        return Object.values(Object.groupBy(reviews, review => review.user?.id))
+            .map(reviews => reviews.toSorted((a, b) => new Date(b.submitted_at) - new Date(a.submitted_at))[0]);
     }
 
     // #region Pull Request Row Customization
@@ -85,8 +104,8 @@
         return PullRequestStatus.REVIEWS_NEEDED;
     }
 
-    function generatePullRequestStatesSummary($row, data) {
-        const summary = data.reduce((acc, review) => {
+    function generatePullRequestStatesSummary($row, reviews) {
+        const summary = reviews.reduce((acc, review) => {
             if (!['APPROVED', 'REQUEST_CHANGES', 'COMMENT'].includes(review.state)) {
                 return acc;
             }
@@ -112,6 +131,49 @@
         `)
     }
     // #endregion
+    // #endregion
+
+    // #region Repository Page
+    if (globalThis.location.pathname.endsWith('/projects')) {
+        waitForElement('.milestone-card > h3 a', ($link) => {
+            globalThis.location.href = $link.attr('href');
+        });
+    }
+    // #endregion
+
+    // #region Project Kanban
+    waitForElement('.issue-card', ($card) => {
+        $card.on('dblclick', () =>
+            globalThis.location.href = $card.find('.issue-card-title').attr('href')
+        );
+    });
+    // #endregion
+
+    // #region Issue Page
+    if (globalThis.location.pathname.includes('/issues/')) {
+        const $pageInfo = $('#issue-page-info');
+        const issueData = await apiRequest(`repos${$pageInfo.data('issue-repo-link')}/issues/${$pageInfo.data('issue-index')}`, 'GET');
+
+        waitForElement('.issue-title', ($title) => {
+            $title.find('.issue-title-buttons').prepend(`
+                <button id="copy-issue-branch-name" class="ui small basic button">
+                    Copy branch name
+                </button>
+            `);
+
+            $('#copy-issue-branch-name').off('click').on('click', () => {
+                const cleanedIssueTitle = issueData.title
+                    .toLowerCase()
+                    .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // Remove accents
+                    .replaceAll(/[^a-zA-Z0-9\s]/g, '') // Remove special characters except spaces
+                    .trim()
+                    .replaceAll(/\s+/g, '-'); // Replace spaces with dashes
+
+                const branchName = `${issueData.assignee.login}/${cleanedIssueTitle}-#${issueData.number}`;
+                navigator.clipboard.writeText(branchName);
+            });
+        });
+    }
     // #endregion
 
     // #region Utils
