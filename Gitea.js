@@ -13,7 +13,7 @@
 (async function() {
     'use strict';
 
-    const {  } = await import('https://unpkg.com/ninja-keys?module');
+    await import('https://unpkg.com/ninja-keys?module');
 
     console.log('Gitea script loaded');
 
@@ -119,7 +119,6 @@
         }
 
         commandPalette.data = [...commandPalette.data];
-        console.log('Updated command palette data', commandPalette.data);
     }
 
 
@@ -128,7 +127,7 @@
 
         switch (id) {
             case 'repos': {
-                const repos = await apiRequest('repos/search', 'GET');
+                const repos = await apiRequest('repos/search', 'GET', { limit: 500 });
                 setPaletteChildren('repos', repos.data.map(repo => ({
                     id: `repo-${repo.id}`,
                     title: repo.full_name,
