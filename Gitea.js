@@ -144,35 +144,32 @@
     // #endregion
 
     // #region Pull Request Table
-    let pullRequestsData;
     if (globalThis.location.pathname.includes('/pulls')) {
-        pullRequestsData = await apiRequest('repos/issues/search', 'GET', { type: 'pulls' });
         waitForElement('#issue-list > .flex-item', customizePullRequestRow)
-    }
+    };
 
     // Main method to customize the pull request row
     async function customizePullRequestRow($row) {
-        const number = $row.find('.flex-item-title > a').attr('href').split('/').pop();
-        const data = pullRequestsData.find(pr => pr.number == number);
-        if (!data) return;
-        const fullData = await apiRequest(
-            `repos/${data.repository.full_name}/pulls/${number}/reviews`,
+        const endpoint = $row.find('.flex-item-title > a').attr('href');
+        const pullRequest = await apiRequest(`repos/${endpoint}`, 'GET');
+        const reviews = await apiRequest(
+            `repos/${endpoint}/reviews`,
             'GET'
         );
 
-        const reviews = treatPullRequestReviews(fullData);
+        const treatedReviews = treatPullRequestReviews(reviews);
 
-        if (reviews.some(review => review.user?.id == currentUser.id && review.state === 'REQUEST_REVIEW')) {
+        if (treatedReviews.some(review => review.user?.id == currentUser.id && review.state === 'REQUEST_REVIEW')) {
             $row.css('border', '2px solid #004085');
         } else if (
-            data.user.id === currentUser.id
+            pullRequest.user.id === currentUser.id
             || reviews.some(review => review.user?.id === currentUser.id)
         ) {
             $row.css('opacity', '0.4');
         }
 
-        applyPullRequestStatusStyle($row, getPullRequestStatus(reviews));
-        generatePullRequestStatesSummary($row, reviews);
+        applyPullRequestStatusStyle($row, getPullRequestStatus(treatedReviews));
+        generatePullRequestStatesSummary($row, treatedReviews);
     }
 
     function treatPullRequestReviews(reviews) {
@@ -307,7 +304,6 @@
 
     // #region Utils
     function apiRequest(endpoint, method, data = {}) {
-        console.log(`API Request: ${method} ${endpoint}`, data);
         if (endpoint.startsWith('/')) {
             endpoint = endpoint.substring(1);
         }
