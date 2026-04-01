@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Gitea
 // @namespace    http://tampermonkey.net/
-// @version      3.1.1
+// @version      3.2
 // @description  try to take over the world!
 // @author       You
 // @match        https://git.applidev.fr/*
@@ -127,8 +127,23 @@
 
         switch (id) {
             case 'repos': {
-                const repos = await apiRequest('repos/search', 'GET', { limit: 500 });
-                setPaletteChildren('repos', repos.data.map(repo => ({
+                let stop = false;
+                let page = 1;
+                const allRepos = [];
+
+                // Fetch all repositories with pagination
+                while (!stop) {
+                    const repos = await apiRequest('repos/search', 'GET', { limit: 50, page });
+                    allRepos.push(...repos.data);
+
+                    if (repos.data.length < 50) {
+                        stop = true;
+                    } else {
+                        page++;
+                    }
+                }
+
+                setPaletteChildren('repos', allRepos.map(repo => ({
                     id: `repo-${repo.id}`,
                     title: repo.full_name,
                     parent: 'repos',
@@ -275,6 +290,53 @@
     }
     // #endregion
 
+    // #region Global Issue Table
+    if (globalThis.location.href === `${GITEA_BASE_URL}/issues`) {
+        waitForElement('#issue-list', ($list) => {
+            const $header = $list.siblings('.list-header');
+            $header.append($(`
+                <button class="ui small basic button">
+                    Export
+                </button>
+            `).on('click', exportIssues));
+        });
+    }
+
+    async function exportIssues() {
+        const allIssues = [];
+        let page = 1;
+        let stop = false;
+
+        while (!stop) {
+            const issues = await apiRequest('repos/issues/search', 'GET', { limit: 50, page });
+            allIssues.push(...issues);
+            if (issues.length < 50) {
+                stop = true;
+            } else {
+                page++;
+            }
+        }
+
+        const csvContent = [
+            ['ID', 'Repo', 'Title', 'Body', 'State', 'Labels', 'Creator', 'Assignee', 'Created At', 'Updated At'],
+            ...allIssues.map(issue => [
+                issue.id,
+                issue.repository.name,
+                `"${issue.title.replaceAll('"', '""')}"`,
+                `"${issue.body.replaceAll('"', '""')}"`,
+                issue.state,
+                `"${issue.labels.map(l => l.name).join(', ')}"`,
+                issue.user ? issue.user.login : '',
+                issue.assignee ? issue.assignee.login : '',
+                issue.created_at,
+                issue.updated_at
+            ])
+        ].map(e => e.join(',')).join('\n');
+
+        downloadFile('issues.csv', csvContent, 'text/csv');
+    }
+    // #endregion
+
     // #region Issue Page
     if (globalThis.location.pathname.includes('/issues/')) {
         const $pageInfo = $('#issue-page-info');
@@ -316,6 +378,18 @@
             data: method === 'GET' ? data : JSON.stringify(data),
             contentType: 'application/json'
         });
+    }
+
+    function downloadFile(filename, content, mimeType) {
+        const blob = new Blob([content], { type: mimeType });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.setAttribute('href', url);
+        link.setAttribute('download', filename);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
     }
     // #endregion
     // Your code here...
